@@ -2,100 +2,75 @@ const http = require('http');
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
-// --- PARCHE PARA RENDER (Evita error de "No open ports detected") ---
+// Servidor para mantener a Render activo
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot activo\n');
 }).listen(process.env.PORT || 3000);
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 const TAREAS_INFO = {
-    sembrado: { nombre: "Sembrado", duracion: 16 * 60 * 60 * 1000 },
-    secado: { nombre: "Secado", duracion: 6 * 60 * 60 * 1000 },
-    atraco_edificio: { nombre: "Atraco Edificio", duracion: 30 * 60 * 1000 },
-    atraco_casa: { nombre: "Atraco Casa", duracion: 30 * 60 * 1000 }
+    sembrado: { nombre: "Sembrado", duracion: 16 * 60 * 60 * 1000, img: "https://img.gta5-mods.com/q95/images/weedshop-sp-fivem/7d732e-EVzgKMK.jpeg" },
+    secado: { nombre: "Secado", duracion: 6 * 60 * 60 * 1000, img: "https://notasdehumo.com/wp-content/uploads/2015/04/marihuana-secandose2.jpg" },
+    atraco_edificio: { nombre: "Atraco Edificio", duracion: 30 * 60 * 1000, img: "https://i.ytimg.com/vi/2JelbjReevo/hq720.jpg" },
+    atraco_casa: { nombre: "Atraco Casa", duracion: 30 * 60 * 1000, img: "https://static.wikia.nocookie.net/esgta/images/e/e5/ResidenciaClintonNextGenV.jpg/revision/latest?cb=20141121201436" }
 };
 
-let tareasActivas = [];
-
-// Formateo: 0h 0m 0s
 function formatearTiempo(ms) {
     if (ms <= 0) return "FINALIZADO";
-    let totalS = Math.floor(ms / 1000);
-    let h = Math.floor(totalS / 3600);
-    let m = Math.floor((totalS % 3600) / 60);
-    let s = totalS % 60;
-    return `${h}h ${m}m ${s}s`;
+    let s = Math.floor(ms / 1000);
+    let h = Math.floor(s / 3600);
+    let m = Math.floor((s % 3600) / 60);
+    let seg = s % 60;
+    return `${h}h ${m}m ${seg}s`;
 }
 
-function crearPanel() {
-    const embed = new EmbedBuilder()
-        .setTitle("⏱️ CRONÓMETRO DE TAREAS")
-        .setColor(0x2F3136)
-        .setTimestamp();
-
-    if (tareasActivas.length === 0) {
-        embed.setDescription("⏳ *El cronómetro está en espera... pulsa un botón para iniciar.*");
-    } else {
-        let desc = "";
-        tareasActivas.forEach((t, index) => {
-            const restante = t.fin - Date.now();
-            desc += `**${index + 1}. ${t.nombre}**\n👤 Iniciado por: ${t.usuario}\n⏲️ **${formatearTiempo(restante)}**\n--------------------------\n`;
-        });
-        embed.setDescription(desc);
-    }
-    
+// Mensaje con los botones para iniciar tareas
+function crearPanelMenu() {
     const row = new ActionRowBuilder().addComponents(
-        ['sembrado', 'secado', 'atraco_edificio', 'atraco_casa', 'limpiar'].map(id => 
-            new ButtonBuilder()
-                .setCustomId(id)
-                .setLabel(id.replace('_', ' ').toUpperCase())
-                .setStyle(id === 'limpiar' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+        ['sembrado', 'secado', 'atraco_edificio', 'atraco_casa'].map(id => 
+            new ButtonBuilder().setCustomId(id).setLabel(id.replace('_', ' ').toUpperCase()).setStyle(ButtonStyle.Secondary)
         )
     );
-    
-    return { embeds: [embed], components: [row] };
+    return { content: "📋 **Selecciona una actividad para crear una tarjeta de seguimiento:**", components: [row] };
 }
-
-
 
 client.on('messageCreate', async message => {
     if (message.content === '!gestion') {
-        const msg = await message.channel.send(crearPanel());
-        setInterval(async () => { await msg.edit(crearPanel()).catch(() => {}); }, 5000);
-    }
-    if (message.content === '!verlogs') {
-        const logs = fs.existsSync('historial_tareas.txt') ? fs.readFileSync('historial_tareas.txt', 'utf8') : "Sin logs.";
-        await message.author.send("📜 **Historial de la banda:**\n```" + logs.slice(-1500) + "```");
+        await message.channel.send(crearPanelMenu());
     }
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     
-    if (interaction.customId === 'limpiar') {
-        tareasActivas = [];
-        await interaction.update(crearPanel());
-        return;
-    }
-
     const info = TAREAS_INFO[interaction.customId];
-    tareasActivas.push({ 
-        nombre: info.nombre, 
-        fin: Date.now() + info.duracion, 
-        usuario: interaction.user.username 
-    });
-    
+    const fin = Date.now() + info.duracion;
+
+    // Creamos la tarjeta
+    const embed = new EmbedBuilder()
+        .setTitle(`🚀 ${info.nombre}`)
+        .setDescription(`👤 **Iniciado por:** ${interaction.user.username}\n⏳ **Tiempo:** Calculando...`)
+        .setImage(info.img)
+        .setColor(0x2F3136)
+        .setTimestamp();
+
+    const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
+
+    // Registro en log
     fs.appendFileSync('historial_tareas.txt', `${new Date().toLocaleString()} - ${interaction.user.username}: INICIÓ ${info.nombre}\n`);
-    await interaction.update(crearPanel());
+
+    // Intervalo específico para esta tarjeta (cronómetro en tiempo real)
+    const interval = setInterval(async () => {
+        const restante = fin - Date.now();
+        const nuevaTarjeta = EmbedBuilder.from(embed)
+            .setDescription(`👤 **Iniciado por:** ${interaction.user.username}\n⏳ **Quedan:** ${formatearTiempo(restante)}`);
+        
+        await msg.edit({ embeds: [nuevaTarjeta] }).catch(() => clearInterval(interval));
+        
+        if (restante <= 0) clearInterval(interval);
+    }, 5000);
 });
 
 client.login(process.env.TOKEN);
-
