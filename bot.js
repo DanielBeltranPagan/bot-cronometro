@@ -2,21 +2,13 @@ const http = require('http');
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
-// --- SERVIDOR PARA EVITAR ERROR DE PUERTOS EN RENDER ---
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot activo\n');
 }).listen(process.env.PORT || 3000);
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// --- CONFIGURACIÓN DE ACTIVIDADES ---
 const TAREAS_INFO = {
     sembrado: { nombre: "Sembrado", duracion: 16 * 60 * 60 * 1000, img: "https://img.gta5-mods.com/q95/images/weedshop-sp-fivem/7d732e-EVzgKMK.jpeg", emoji: "🌿" },
     secado: { nombre: "Secado", duracion: 6 * 60 * 60 * 1000, img: "https://notasdehumo.com/wp-content/uploads/2015/04/marihuana-secandose2.jpg", emoji: "💨" },
@@ -33,42 +25,39 @@ function formatearTiempo(ms) {
     return `${h}h ${m}m ${seg}s`;
 }
 
-// --- COMANDOS DEL BOT ---
 client.on('messageCreate', async message => {
-    // Menú principal
     if (message.content === '!gestion') {
         const row = new ActionRowBuilder().addComponents(
-            ['sembrado', 'secado', 'atraco_edificio', 'atraco_casa'].map(id => 
+            Object.keys(TAREAS_INFO).map(id => 
                 new ButtonBuilder()
                     .setCustomId(id)
-                    .setLabel(TAREAS_INFO[id].emoji + " " + TAREAS_INFO[id].nombre)
+                    .setLabel(`${TAREAS_INFO[id].emoji} ${TAREAS_INFO[id].nombre}`)
                     .setStyle(ButtonStyle.Secondary)
             )
         );
-        await message.channel.send({ content: "📋 **Selecciona una actividad para crear una tarjeta de seguimiento:**", components: [row] });
+        await message.channel.send({ content: "📋 **Selecciona una actividad:**", components: [row] });
     }
     
-    // Limpieza de mensajes del bot
     if (message.content === '!limpiar') {
         const messages = await message.channel.messages.fetch({ limit: 50 });
         const botMessages = messages.filter(m => m.author.id === client.user.id);
         await message.channel.bulkDelete(botMessages, true);
-        await message.reply("🧹 **Panel y tarjetas limpiados.**").then(m => setTimeout(() => m.delete(), 3000));
-    }
-
-    // Obtener historial
-    if (message.content === '!logsbanda') {
-        const logs = fs.existsSync('historial_tareas.txt') ? fs.readFileSync('historial_tareas.txt', 'utf8') : "Sin logs.";
-        await message.author.send("📜 **Historial de la banda:**\n```" + logs.slice(-1500) + "```");
     }
 });
 
-// --- INTERACCIÓN CON BOTONES ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     
+    // --- SEGURIDAD: Validar que el ID existe ---
     const info = TAREAS_INFO[interaction.customId];
+    if (!info) {
+        return interaction.reply({ content: "⚠️ Botón no reconocido. Usa !limpiar y !gestion para refrescar.", ephemeral: true });
+    }
+
     const fin = Date.now() + info.duracion;
+
+    // --- RESPUESTA RÁPIDA ---
+    await interaction.deferReply(); 
 
     const embed = new EmbedBuilder()
         .setTitle(`${info.emoji} ${info.nombre}`)
@@ -77,20 +66,20 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x2F3136)
         .setTimestamp();
 
-    const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
-
-    // Guardar log
+    const msg = await interaction.editReply({ embeds: [embed] });
     fs.appendFileSync('historial_tareas.txt', `${new Date().toLocaleString()} - ${interaction.user.username}: INICIÓ ${info.nombre}\n`);
 
-    // Actualizador de tiempo en tiempo real (cada 5 segundos)
     const interval = setInterval(async () => {
         const restante = fin - Date.now();
         const nuevaTarjeta = EmbedBuilder.from(embed)
             .setDescription(`👤 **Iniciado por:** ${interaction.user.username}\n⏳ **Quedan:** ${formatearTiempo(restante)}`);
         
-        await msg.edit({ embeds: [nuevaTarjeta] }).catch(() => clearInterval(interval));
-        
-        if (restante <= 0) clearInterval(interval);
+        try {
+            await msg.edit({ embeds: [nuevaTarjeta] });
+            if (restante <= 0) clearInterval(interval);
+        } catch (e) {
+            clearInterval(interval);
+        }
     }, 5000);
 });
 
