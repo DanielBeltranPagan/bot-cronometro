@@ -1,7 +1,20 @@
+const http = require('http');
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+// --- PARCHE PARA RENDER (Evita error de "No open ports detected") ---
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot activo\n');
+}).listen(process.env.PORT || 3000);
+
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ] 
+});
 
 const TAREAS_INFO = {
     sembrado: { nombre: "Sembrado", duracion: 16 * 60 * 60 * 1000 },
@@ -12,7 +25,7 @@ const TAREAS_INFO = {
 
 let tareasActivas = [];
 
-// Formateo elegante: 00h 00m 00s
+// Formateo: 0h 0m 0s
 function formatearTiempo(ms) {
     if (ms <= 0) return "FINALIZADO";
     let totalS = Math.floor(ms / 1000);
@@ -34,30 +47,28 @@ function crearPanel() {
         let desc = "";
         tareasActivas.forEach((t, index) => {
             const restante = t.fin - Date.now();
-            desc += `**${index + 1}. ${t.nombre}**\n` +
-                    `👤 Iniciado por: ${t.usuario}\n` +
-                    `⏲️ **${formatearTiempo(restante)}**\n` + 
-                    `--------------------------\n`;
+            desc += `**${index + 1}. ${t.nombre}**\n👤 Iniciado por: ${t.usuario}\n⏲️ **${formatearTiempo(restante)}**\n--------------------------\n`;
         });
         embed.setDescription(desc);
     }
     
-    // Botones uniformes
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sembrado').setLabel('Sembrado').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('secado').setLabel('Secado').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('atraco_edificio').setLabel('Edificio').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('atraco_casa').setLabel('Casa').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('limpiar').setLabel('Limpiar').setStyle(ButtonStyle.Danger)
+        ['sembrado', 'secado', 'atraco_edificio', 'atraco_casa', 'limpiar'].map(id => 
+            new ButtonBuilder()
+                .setCustomId(id)
+                .setLabel(id.replace('_', ' ').toUpperCase())
+                .setStyle(id === 'limpiar' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+        )
     );
     
     return { embeds: [embed], components: [row] };
 }
 
+
+
 client.on('messageCreate', async message => {
     if (message.content === '!panel') {
         const msg = await message.channel.send(crearPanel());
-        // Refresco de cronómetro cada 5 segundos
         setInterval(async () => { await msg.edit(crearPanel()).catch(() => {}); }, 5000);
     }
     if (message.content === '!verlogs') {
