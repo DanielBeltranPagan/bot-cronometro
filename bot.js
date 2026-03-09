@@ -67,7 +67,7 @@ function crearPanel() {
 
 
 client.on('messageCreate', async message => {
-    if (message.content === '!panel') {
+    if (message.content === '!gestion') {
         const msg = await message.channel.send(crearPanel());
         setInterval(async () => { await msg.edit(crearPanel()).catch(() => {}); }, 5000);
     }
@@ -98,3 +98,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.TOKEN);
+
