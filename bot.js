@@ -21,10 +21,9 @@ const TAREAS_INFO = {
     sembrado: { nombre: "Sembrado", duracion: 16 * 60 * 60 * 1000, img: "https://img.gta5-mods.com/q95/images/weedshop-sp-fivem/7d732e-EVzgKMK.jpeg", emoji: "🌿" },
     sembrado_coca: { nombre: "Sembrado Coca", duracion: 3 * 60 * 60 * 1000, img: "https://i.imgur.com/tu_imagen_coca.jpg", emoji: "🍃" },
     secado: { nombre: "Secado", duracion: 6 * 60 * 60 * 1000, img: "https://notasdehumo.com/wp-content/uploads/2015/04/marihuana-secandose2.jpg", emoji: "💨" },
-    atraco_edificio: { nombre: "Atraco Edificio", duracion: 30 * 60 * 1000, img: "https://i.ytimg.com/vi/2JelbjReevo/hq720.jpg", emoji: "🏢" },
+    atraco_edificio: { nombre: "Atraco Torre", duracion: 15 * 60 * 1000, img: "https://i.ytimg.com/vi/2JelbjReevo/hq720.jpg", emoji: "🏢" }, // Cambiado a 15 min y nombre a Torre
     atraco_casa: { nombre: "Atraco Casa", duracion: 30 * 60 * 1000, img: "https://static.wikia.nocookie.net/esgta/images/e/e5/ResidenciaClintonNextGenV.jpg/revision/latest?cb=20141121201436", emoji: "🏠" }
 };
-
 // Función reutilizable para enviar el panel
 async function enviarPanel(channel) {
     const row = new ActionRowBuilder().addComponents(
