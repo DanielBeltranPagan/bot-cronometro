@@ -34,6 +34,7 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Menú principal
     if (message.content === '!gestion') {
         const row = new ActionRowBuilder().addComponents(
             Object.keys(TAREAS_INFO).map(id => 
@@ -46,11 +47,19 @@ client.on('messageCreate', async message => {
         await message.channel.send({ content: "📋 **Selecciona una actividad para iniciar la cuenta atrás:**", components: [row] });
     }
 
-    if (message.content === '!limpiar') {
-        const messages = await message.channel.messages.fetch({ limit: 50 });
-        const tarjetas = messages.filter(m => m.author.id === client.user.id && m.embeds.length > 0);
-        await message.channel.bulkDelete(tarjetas, true);
-        message.channel.send("🧹 Limpieza de tarjetas completada.").then(m => setTimeout(() => m.delete(), 3000));
+    // Comando para limpiar TODO (Tarjetas y Avisos)
+    if (message.content === '!limpiartodo') {
+        try {
+            const fetched = await message.channel.messages.fetch({ limit: 100 });
+            // Filtramos mensajes que sean del bot
+            const delBot = fetched.filter(m => m.author.id === client.user.id);
+            await message.channel.bulkDelete(delBot, true);
+            
+            message.channel.send("🧹 **Canal de gestión vaciado con éxito.**")
+                .then(m => setTimeout(() => m.delete(), 5000));
+        } catch (error) {
+            message.reply("No puedo borrar mensajes de más de 14 días.");
+        }
     }
 });
 
@@ -62,7 +71,6 @@ client.on('interactionCreate', async interaction => {
     if (!info) return interaction.reply({ content: "⚠️ Tarea no encontrada.", ephemeral: true });
 
     const tiempoFinalUnix = Math.floor((Date.now() + info.duracion) / 1000);
-
     await interaction.deferReply();
 
     const embed = new EmbedBuilder()
@@ -79,22 +87,28 @@ client.on('interactionCreate', async interaction => {
 
     const msg = await interaction.editReply({ embeds: [embed] });
 
-    const logEntry = `${new Date().toLocaleString()} - ${interaction.user.username}: INICIÓ ${info.nombre}\n`;
-    fs.appendFileSync('historial_tareas.txt', logEntry);
+    // Guardar en historial
+    fs.appendFileSync('historial_tareas.txt', `${new Date().toLocaleString()} - ${interaction.user.username}: ${info.nombre}\n`);
 
-    // --- PROGRAMAR AVISO DE FINALIZACIÓN ---
+    // --- MANEJO DEL FINALIZADO ---
     setTimeout(async () => {
         try {
+            // 1. Borrar el embed de la cuenta atrás
             await msg.delete();
             
-            // Obtenemos la hora actual para el mensaje de aviso
+            // 2. Enviar aviso de finalización con la hora
             const horaAcabado = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-
-            await interaction.channel.send(
+            const avisoFinal = await interaction.channel.send(
                 `✅ **${interaction.user.username}**, el tiempo de **${info.nombre}** ha terminado (Finalizado a las: **${horaAcabado}**).`
             );
+
+            // 3. Borrar este aviso automáticamente tras 3 horas (3 * 60 * 60 * 1000 ms)
+            setTimeout(() => {
+                avisoFinal.delete().catch(() => console.log("El aviso ya fue borrado."));
+            }, 3 * 60 * 60 * 1000);
+
         } catch (e) {
-            console.log("El mensaje ya no existe o no se pudo borrar.");
+            console.log("Error al procesar el final de la tarea.");
         }
     }, info.duracion);
 });
