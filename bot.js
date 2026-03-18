@@ -48,7 +48,6 @@ client.on('messageCreate', async message => {
 
     if (message.content === '!limpiar') {
         const messages = await message.channel.messages.fetch({ limit: 50 });
-        // Filtra mensajes del bot que sean tarjetas de tiempo (tienen embed)
         const tarjetas = messages.filter(m => m.author.id === client.user.id && m.embeds.length > 0);
         await message.channel.bulkDelete(tarjetas, true);
         message.channel.send("🧹 Limpieza de tarjetas completada.").then(m => setTimeout(() => m.delete(), 3000));
@@ -62,7 +61,6 @@ client.on('interactionCreate', async interaction => {
     const info = TAREAS_INFO[interaction.customId];
     if (!info) return interaction.reply({ content: "⚠️ Tarea no encontrada.", ephemeral: true });
 
-    // Calculamos el momento exacto en que termina (en segundos Unix)
     const tiempoFinalUnix = Math.floor((Date.now() + info.duracion) / 1000);
 
     await interaction.deferReply();
@@ -81,21 +79,24 @@ client.on('interactionCreate', async interaction => {
 
     const msg = await interaction.editReply({ embeds: [embed] });
 
-    // Guardar en log local
     const logEntry = `${new Date().toLocaleString()} - ${interaction.user.username}: INICIÓ ${info.nombre}\n`;
     fs.appendFileSync('historial_tareas.txt', logEntry);
 
-    // Programar borrado automático al finalizar
+    // --- PROGRAMAR AVISO DE FINALIZACIÓN ---
     setTimeout(async () => {
         try {
             await msg.delete();
-            // Opcional: Avisar en el canal que terminó
-            await interaction.channel.send(`✅ **${interaction.user.username}**, el tiempo de **${info.nombre}** ha terminado.`);
+            
+            // Obtenemos la hora actual para el mensaje de aviso
+            const horaAcabado = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+            await interaction.channel.send(
+                `✅ **${interaction.user.username}**, el tiempo de **${info.nombre}** ha terminado (Finalizado a las: **${horaAcabado}**).`
+            );
         } catch (e) {
             console.log("El mensaje ya no existe o no se pudo borrar.");
         }
     }, info.duracion);
 });
 
-// --- LOGIN ---
 client.login(process.env.TOKEN);
