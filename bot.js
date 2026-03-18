@@ -25,45 +25,59 @@ const TAREAS_INFO = {
     atraco_casa: { nombre: "Atraco Casa", duracion: 30 * 60 * 1000, img: "https://static.wikia.nocookie.net/esgta/images/e/e5/ResidenciaClintonNextGenV.jpg/revision/latest?cb=20141121201436", emoji: "🏠" }
 };
 
-// --- EVENTO READY ---
+// Función reutilizable para enviar el panel
+async function enviarPanel(channel) {
+    const row = new ActionRowBuilder().addComponents(
+        Object.keys(TAREAS_INFO).map(id => 
+            new ButtonBuilder()
+                .setCustomId(id)
+                .setLabel(`${TAREAS_INFO[id].emoji} ${TAREAS_INFO[id].nombre}`)
+                .setStyle(ButtonStyle.Secondary)
+        )
+    );
+    return await channel.send({ content: "📋 **Gestión de Actividades:**", components: [row] });
+}
+
 client.once('ready', () => {
     console.log(`✅ Bot conectado como ${client.user.tag}`);
 });
 
-// --- COMANDOS DE MENSAJE ---
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Menú principal
     if (message.content === '!gestion') {
-        const row = new ActionRowBuilder().addComponents(
-            Object.keys(TAREAS_INFO).map(id => 
-                new ButtonBuilder()
-                    .setCustomId(id)
-                    .setLabel(`${TAREAS_INFO[id].emoji} ${TAREAS_INFO[id].nombre}`)
-                    .setStyle(ButtonStyle.Secondary)
-            )
-        );
-        await message.channel.send({ content: "📋 **Selecciona una actividad para iniciar la cuenta atrás:**", components: [row] });
+        await enviarPanel(message.channel);
     }
 
-    // Comando para limpiar TODO (Tarjetas y Avisos)
     if (message.content === '!limpiartodo') {
         try {
+            // Borramos el mensaje del usuario (!limpiartodo)
+            await message.delete().catch(() => {});
+
             const fetched = await message.channel.messages.fetch({ limit: 100 });
-            // Filtramos mensajes que sean del bot
-            const delBot = fetched.filter(m => m.author.id === client.user.id);
-            await message.channel.bulkDelete(delBot, true);
             
-            message.channel.send("🧹 **Canal de gestión vaciado con éxito.**")
-                .then(m => setTimeout(() => m.delete(), 5000));
+            // Filtramos mensajes que sean del bot
+            const mensajesBot = fetched.filter(m => m.author.id === client.user.id);
+            
+            // Borramos todos los mensajes del bot encontrados
+            if (mensajesBot.size > 0) {
+                await message.channel.bulkDelete(mensajesBot, true);
+            }
+            
+            // Enviamos un aviso temporal y REGENERAMOS el panel
+            const aviso = await message.channel.send("🧹 **Canal limpiado. Restableciendo panel...**");
+            await enviarPanel(message.channel);
+            
+            // El aviso de limpieza desaparece rápido
+            setTimeout(() => aviso.delete().catch(() => {}), 3000);
+
         } catch (error) {
-            message.reply("No puedo borrar mensajes de más de 14 días.");
+            console.error("Error en limpieza:", error);
+            message.channel.send("⚠️ No pude limpiar todos los mensajes (pueden ser demasiado antiguos).");
         }
     }
 });
 
-// --- INTERACCIÓN CON BOTONES ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     
@@ -82,33 +96,26 @@ client.on('interactionCreate', async interaction => {
             `🏁 **Finaliza:** <t:${tiempoFinalUnix}:F>\n` + 
             `⏳ **Tiempo restante:** <t:${tiempoFinalUnix}:R>`
         )
-        .setFooter({ text: "La cuenta atrás se actualiza automáticamente" })
         .setTimestamp();
 
     const msg = await interaction.editReply({ embeds: [embed] });
 
-    // Guardar en historial
-    fs.appendFileSync('historial_tareas.txt', `${new Date().toLocaleString()} - ${interaction.user.username}: ${info.nombre}\n`);
-
-    // --- MANEJO DEL FINALIZADO ---
     setTimeout(async () => {
         try {
-            // 1. Borrar el embed de la cuenta atrás
-            await msg.delete();
+            await msg.delete().catch(() => {});
             
-            // 2. Enviar aviso de finalización con la hora
             const horaAcabado = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
             const avisoFinal = await interaction.channel.send(
                 `✅ **${interaction.user.username}**, el tiempo de **${info.nombre}** ha terminado (Finalizado a las: **${horaAcabado}**).`
             );
 
-            // 3. Borrar este aviso automáticamente tras 3 horas (3 * 60 * 60 * 1000 ms)
+            // El aviso de finalización se borra a las 3 horas
             setTimeout(() => {
-                avisoFinal.delete().catch(() => console.log("El aviso ya fue borrado."));
+                avisoFinal.delete().catch(() => {});
             }, 3 * 60 * 60 * 1000);
 
         } catch (e) {
-            console.log("Error al procesar el final de la tarea.");
+            console.log("Error al procesar el final.");
         }
     }, info.duracion);
 });
